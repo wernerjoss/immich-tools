@@ -7,7 +7,8 @@
 export IMMICH_HOME="$HOME/docker/immich-app"	#	where the immich docker-compose.yml is located (without trailing slash '/')
 source $IMMICH_HOME/.env	# get UPLOAD_LOCATION, DB_DATA_LOCATION, REMOTE_DEST from .env
 DB_BACKUP_LOCATION="$UPLOAD_LOCATION/backups"	#	default, same as immich app uses itself 09.11.24
-# CLONE_DB_BACKUP_LOCATION=$DB_BACKUP_LOCATION	# default
+CLONE_DB_BACKUP_LOCATION=$DB_BACKUP_LOCATION	# default
+# CLONE_DB_BACKUP_LOCATION="/data/immich/backups"	# asusbox :-)
 # note: REMOTE_DEST is a nonstandard Value in .env, it must be in the Form: <hostname>:<path> !
 # end settings
 
@@ -22,6 +23,8 @@ HOST=`hostname`
 TITLE=" $HOST Immich Server Administration"
 MENU="Choose one of the following options:"
 
+keep=4	# number of latest backup files to keep
+
 OPTIONS=(1 "update server"
 		 2 "cleanup docker images"
 		 3 "remove docker volumes"
@@ -31,6 +34,15 @@ OPTIONS=(1 "update server"
 		 7 "start/stop server"
 		 8 "rsync data to clone"
 		 9 "Quit")
+
+function contains {
+	local target=$1
+	shift
+	printf '%s\n' "$@" | grep -x -q "$target"
+	out=$?
+	(( out = 1 - out ))
+	return $out
+}
 
 while [[ "$CHOICE" -ne 9 ]];do
 	CHOICE=$(dialog --clear \
@@ -101,6 +113,19 @@ while [[ "$CHOICE" -ne 9 ]];do
 						scp $backupfile "$REMOTE_HOST"":""$CLONE_DB_BACKUP_LOCATION"	# assume $DB_BACKUP_LOCATION is the same on REMOTE_HOST :-)
 					fi
 				fi
+				bck_list=($(ls -l /mnt/sdcard/immich/backups/*.gz | awk '{print $9}'))
+				keep_list=($(ls -lt  /mnt/sdcard/immich/backups/*.gz | awk '{print $9}' | head -n $keep))
+				for f in "${bck_list[@]}"
+				do
+					# keep 4 latest backup files
+					if contains "$f" "${keep_list[@]}";then
+						echo "delete $f"
+						rm -f $f
+					else
+						echo "keep $f"
+					fi
+				done
+				read ans
 				;;
 			5)
 				echo "restore database"
