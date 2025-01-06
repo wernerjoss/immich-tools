@@ -7,9 +7,11 @@
 export IMMICH_HOME="$HOME/docker/immich-app"	#	where the immich docker-compose.yml is located (without trailing slash '/')
 source $IMMICH_HOME/.env	# get UPLOAD_LOCATION, DB_DATA_LOCATION, REMOTE_DEST from .env
 DB_BACKUP_LOCATION="$UPLOAD_LOCATION/backups"	#	default, same as immich app uses itself 09.11.24
-CLONE_DB_BACKUP_LOCATION=$DB_BACKUP_LOCATION	# default
-# CLONE_DB_BACKUP_LOCATION="/data/immich/backups"	# asusbox :-)
-# note: REMOTE_DEST is a nonstandard Value in .env, it must be in the Form: <hostname>:<path> !
+if [ -z $CLONE_DB_BACKUP_LOCATION ];then
+	CLONE_DB_BACKUP_LOCATION="$UPLOAD_LOCATION/backups"	#	default, same as localhost
+fi
+
+# note: REMOTE_DEST is a nonstandard Value sourced from $IMMICH_HOME/.env, it must be in the Form: <hostname>:<path> !
 # end settings
 
 if [ ! -z $REMOTE_DEST ];then
@@ -23,8 +25,6 @@ HOST=`hostname`
 TITLE=" $HOST Immich Server Administration"
 MENU="Choose one of the following options:"
 
-keep=4	# number of latest backup files to keep
-
 OPTIONS=(1 "update server"
 		 2 "cleanup docker images"
 		 3 "remove docker volumes"
@@ -34,15 +34,6 @@ OPTIONS=(1 "update server"
 		 7 "start/stop server"
 		 8 "rsync data to clone"
 		 9 "Quit")
-
-function contains {
-	local target=$1
-	shift
-	printf '%s\n' "$@" | grep -x -q "$target"
-	out=$?
-	(( out = 1 - out ))
-	return $out
-}
 
 while [[ "$CHOICE" -ne 9 ]];do
 	CHOICE=$(dialog --clear \
@@ -82,7 +73,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 						break
 						;;
 					cancel)
-						break	#	continue 2
+						continue 2
 						;;
 					esac
 				done
@@ -103,7 +94,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 			4)
 				echo "backup Database"
 				d=$(date '+%Y-%m-%d')
-				dump="pgdump$d.tar.gz"
+				dump="pgdump-$HOST-$d.tar.gz"
 				backupfile=$DB_BACKUP_LOCATION/$dump
 				echo $backupfile
 				docker exec -t immich_postgres pg_dumpall --clean --if-exists --username=postgres | gzip > $backupfile
@@ -113,30 +104,17 @@ while [[ "$CHOICE" -ne 9 ]];do
 						scp $backupfile "$REMOTE_HOST"":""$CLONE_DB_BACKUP_LOCATION"	# assume $DB_BACKUP_LOCATION is the same on REMOTE_HOST :-)
 					fi
 				fi
-				bck_list=($(ls -l /mnt/sdcard/immich/backups/*.gz | awk '{print $9}'))
-				keep_list=($(ls -lt  /mnt/sdcard/immich/backups/*.gz | awk '{print $9}' | head -n $keep))
-				for f in "${bck_list[@]}"
-				do
-					# keep 4 latest backup files
-					if contains "$f" "${keep_list[@]}";then
-						echo "delete $f"
-						rm -f $f
-					else
-						echo "keep $f"
-					fi
-				done
-				read ans
 				;;
 			5)
 				echo "restore database"
 				prompt="Please select a file:"
-				options=( $(find $DB_BACKUP_LOCATION -maxdepth 1 -print0 | xargs -0) )
+				options=( $(find $DB_BACKUP_LOCATION -type f -maxdepth 1 -print0 | xargs -0) )
 				PS3="$prompt "
 				select bopt in "${options[@]}" "cancel" ; do 
-					if (( $REPLY == 1 + ${#options[@]} )) ; then
-						break	#	continue 2	# 2
-					elif (( $REPLY > 0 && $REPLY <= ${#options[@]} )) ; then
-						echo  "You picked $bopt which is file $$REPLY"
+					if (( REPLY == 1 + ${#options[@]} )) ; then
+						continue 2	# 2
+					elif (( REPLY > 0 && REPLY <= ${#options[@]} )) ; then
+						echo  "You picked $bopt which is file $REPLY"
 						if [ -f $bopt ];then
 							pushd $IMMICH_HOME
 							docker compose down -v  # CAUTION! Deletes all Immich data to start from scratch
@@ -154,7 +132,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 									;;
 								cancel)
 									co=1
-									break	# continue
+									break
 									;;
 								esac
 							done
@@ -168,10 +146,10 @@ while [[ "$CHOICE" -ne 9 ]];do
 							repeat=1
 							while [ $repeat -gt 0 ];do
 								sleep 5	# Wait for Postgres server to start up
-								pgstat=`docker ps | grep postgres`
-								echo $pgstat
-								pgstatok=`docker ps | grep postgres | grep healthy`
-								if [ -z "$pgstatok" ];then
+								srvstat=`docker ps | grep postgres`
+								echo $srvstat
+								srvstatok=`docker ps | grep postgres | grep healthy`
+								if [ -z "$srvstatok" ];then
 										repeat=1
 								else
 										repeat=0
@@ -181,6 +159,21 @@ while [[ "$CHOICE" -ne 9 ]];do
 							| sed "s/SELECT pg_catalog.set_config('search_path', '', false);/SELECT pg_catalog.set_config('search_path', 'public, pg_catalog', true);/g" \
 							| docker exec -i immich_postgres psql --username=postgres	# Restore Backup
 							docker compose up -d	# Start remainder of Immich apps
+							echo "Waiting for Immich server to start up.."
+							repeat=1
+							while [ $repeat -gt 0 ];do
+								sleep 5	# Wait for Postgres server to start up
+								srvstat=`docker ps | grep immich-server`
+								echo $srvstat
+								srvstatok=`docker ps | grep immich-server | grep healthy`
+								if [ -z "$srvstatok" ];then
+										repeat=1
+								else
+										repeat=0
+								fi
+							done
+							echo "press return to continue"
+							read ans
 							popd
 						fi
 						break	#	break
@@ -207,12 +200,11 @@ while [[ "$CHOICE" -ne 9 ]];do
 					echo "starting Immich Server"
 					docker compose up -d
 					docker ps
-					echo "press return to continue"
 				else
 					echo "stopping Immich Server"
 					docker compose down
-					echo "immich Server stopped - press return to continue"
 				fi	
+				echo "press return to continue"
 				read ans
 				popd
 				;;
