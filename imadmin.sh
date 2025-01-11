@@ -50,6 +50,21 @@ while [[ "$CHOICE" -ne 9 ]];do
 				echo "updating Immich Server, please wait until finished"
 				pushd $IMMICH_HOME
 				docker compose down && docker compose pull && docker compose up -d
+				echo "Waiting for Immich server to start up.."
+				repeat=1
+				while [ $repeat -gt 0 ];do
+					sleep 5	# Wait for immich server to start up
+					srvstat=`docker ps | grep immich-server`
+					echo $srvstat
+					srvstatok=`docker ps | grep immich-server | grep healthy`
+					if [ -z "$srvstatok" ];then
+							repeat=1
+					else
+							repeat=0
+					fi
+				done
+				echo "press return to continue"
+				read ans
 				popd
 				;;
 			2)
@@ -108,7 +123,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 			5)
 				echo "restore database"
 				prompt="Please select a file:"
-				options=( $(find $DB_BACKUP_LOCATION -type f -maxdepth 1 -print0 | xargs -0) )
+				options=( $(find $DB_BACKUP_LOCATION -maxdepth 1 -type f -print0 | xargs -0) )
 				PS3="$prompt "
 				select bopt in "${options[@]}" "cancel" ; do 
 					if (( REPLY == 1 + ${#options[@]} )) ; then
@@ -162,7 +177,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 							echo "Waiting for Immich server to start up.."
 							repeat=1
 							while [ $repeat -gt 0 ];do
-								sleep 5	# Wait for Postgres server to start up
+								sleep 5	# Wait for immich server to start up
 								srvstat=`docker ps | grep immich-server`
 								echo $srvstat
 								srvstatok=`docker ps | grep immich-server | grep healthy`
