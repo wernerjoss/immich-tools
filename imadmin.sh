@@ -211,10 +211,22 @@ while [[ "$CHOICE" -ne 9 ]];do
 			7)
 				pushd $IMMICH_HOME
 				alive=`docker ps | grep immich-server | grep healthy `
-				if [ -z $alive ];then
+				if [ -z "$alive" ];then
 					echo "starting Immich Server"
 					docker compose up -d
-					docker ps
+					echo "Waiting for Immich server to start up.."
+					repeat=1
+					while [ $repeat -gt 0 ];do
+						sleep 5	# Wait for immich server to start up
+						srvstat=`docker ps | grep immich-server`
+						echo $srvstat
+						srvstatok=`docker ps | grep immich-server | grep healthy`
+						if [ -z "$srvstatok" ];then
+								repeat=1
+						else
+								repeat=0
+						fi
+					done
 				else
 					echo "stopping Immich Server"
 					docker compose down
