@@ -123,7 +123,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 			5)
 				echo "restore database"
 				prompt="Please select a file:"
-				options=( $(find $DB_BACKUP_LOCATION -maxdepth 1 -type f -print0 | xargs -0) )
+				options=( $(find $DB_BACKUP_LOCATION -maxdepth 1 -type f -name *.gz -print0 | sort | xargs -0) )
 				PS3="$prompt "
 				select bopt in "${options[@]}" "cancel" ; do 
 					if (( REPLY == 1 + ${#options[@]} )) ; then
@@ -138,6 +138,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 							# let the user decide wether to delete $DB_DATA_LOCATION :
 							co=0
 							echo "delete $DB_DATA_LOCATION ? (usually not required)"
+							PS3=""
 							select dopt in "delete" cancel; do
 								case $dopt in
 								"delete")
