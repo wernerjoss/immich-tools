@@ -27,18 +27,19 @@ MENU="Choose one of the following options:"
 
 OPTIONS=(1 "update server"
 		 2 "cleanup docker images"
-		 3 "remove docker volumes"
+		 3 "remove docker volumes (caution !)"
 		 4 "backup database"
 		 5 "restore database"
-		 6 "fetch docker-compose.yml"
+		 6 "fetch docker-compose.yml from https://github.com/immich-app/immich"
 		 7 "start/stop server"
 		 8 "rsync data to clone"
-		 9 "Quit")
+		 9 "cleanup memories cache (use this in case memories are no longer working)"
+		 10 "Quit")
 
-while [[ "$CHOICE" -ne 9 ]];do
+while [[ "$CHOICE" -ne 10 ]];do
 	CHOICE=$(dialog --clear \
 					--title "$TITLE" \
-					--default-item '9' \
+					--default-item '10' \
 					--menu "$MENU" \
 					$HEIGHT $WIDTH $CHOICE_HEIGHT \
 					"${OPTIONS[@]}" \
@@ -69,29 +70,7 @@ while [[ "$CHOICE" -ne 9 ]];do
 				;;
 			2)
 				echo "cleaning up obsolete docker images"
-				srvimg=`docker image ls | grep immich-server | grep release | awk '{print $3}'`
-				echo "active server image: $srvimg"
-				learnimg=`docker image ls | grep immich-machine-learning | grep release | awk '{print $3}'`
-				echo "active machine learning image: $learnimg"
-				echo "obsolete images:"
-				docker image ls | grep immich-server | grep -v $srvimg
-				docker image ls | grep immich-machine-learning | grep -v $learnimg
-				touch $IMMICH_HOME/rmimg.sh
-				docker image ls | grep immich-server | grep -v $srvimg | awk '{ printf "docker image rm %s\n", $3}' > $IMMICH_HOME/rmimg.sh
-				docker image ls | grep immich-machine-learning | grep -v $learnimg | awk '{ printf "docker image rm %s\n", $3}' >> $IMMICH_HOME/rmimg.sh
-				chmod +x $IMMICH_HOME/rmimg.sh
-				echo "please check $IMMICH_HOME/rmimg.sh before executing it :"
-				select dopt in "remove obsolete images" cancel; do
-					case $dopt in
-						"remove obsolete images")
-						$IMMICH_HOME/rmimg.sh
-						break
-						;;
-					cancel)
-						continue 2
-						;;
-					esac
-				done
+				docker image prune	#	most elegant solution :-)
 				;;
 			3)
 				echo "prepare removing docker volumes (caution before actually doing this !)"
@@ -255,6 +234,12 @@ while [[ "$CHOICE" -ne 9 ]];do
 				fi
 				;;
 			9)
+				docker exec immich_postgres psql --dbname=immich --username=postgres -c "delete from system_metadata where key like 'memories-state'; truncate table memories cascade;"
+				echo "memories cache cleaned up - be sure to create and run memories generation job from immich Admin web Interface at least twice !"
+				echo "press return to continue"
+				read ans
+				;;
+			10)
 				echo "Immich Admin Tool exited"
 				;;
 	esac
