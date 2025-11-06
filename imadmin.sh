@@ -102,7 +102,7 @@ while [[ "$CHOICE" -ne 10 ]];do
 			5)
 				echo "restore database"
 				prompt="Please select a file:"
-				options=( $(find $DB_BACKUP_LOCATION -maxdepth 1 -type f -name *.gz -print0 | sort | xargs -0) )
+				options=( $(find $DB_BACKUP_LOCATION -maxdepth 1 -type f -name "*.gz" -print0 | sort | xargs -0) )
 				PS3="$prompt "
 				select bopt in "${options[@]}" "cancel" ; do 
 					if (( REPLY == 1 + ${#options[@]} )) ; then
